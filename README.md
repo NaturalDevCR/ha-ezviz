@@ -72,8 +72,9 @@ No extra configuration is required. As long as the device reports multiple chann
 
 ## Credits
 
-- Based on the official Home Assistant EZVIZ integration (Apache-2.0).
-- Uses [`pyezvizapi`](https://github.com/RenierM26/pyEzvizApi) by @RenierM26.
+- Maintained by [@NaturalDevCR](https://github.com/NaturalDevCR).
+- Based on the official [Home Assistant EZVIZ integration](https://www.home-assistant.io/integrations/ezviz/) (Apache-2.0), originally authored and maintained by [@RenierM26](https://github.com/RenierM26).
+- Powered by the [`pyezvizapi`](https://github.com/RenierM26/pyEzvizApi) library, also by [@RenierM26](https://github.com/RenierM26).
 
 ## License
 
