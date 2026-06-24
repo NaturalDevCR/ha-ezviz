@@ -28,10 +28,12 @@ from .entity import EzvizBaseEntity
 PARALLEL_UPDATES = 1
 OFF_DELAY = timedelta(seconds=60)  # Camera firmware has hard coded turn off.
 
-# Channels to try for the sendAlarm command. Single-lens cameras use the
-# device-level channel 0; dual-lens / multi-channel devices (e.g. the H8c)
-# reject channel 0 with code 2004 and need their 1-indexed channel instead.
+# Channels to try for the legacy sendAlarm command (older cameras). Newer
+# cameras (e.g. the H8c dual-lens) reject sendAlarm on every channel with code
+# 2004 and instead use the "whistle" API; the siren falls back to that.
 _ALARM_CHANNELS = (0, 1, 2)
+WHISTLE_DURATION = 60  # seconds; matches the firmware hard-coded auto-off
+WHISTLE_VOLUME = 100  # 0-100
 
 SIREN_ENTITY_TYPE = SirenEntityDescription(
     key="siren",
@@ -75,50 +77,92 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
         self.entity_description = description
         self._attr_is_on = False
         self._delay_listener: Callable | None = None
-        # Channel the device accepts for sendAlarm; discovered on first use.
-        self._alarm_channel: int | None = None
+        # How this device's siren is driven; discovered on first use.
+        # ("sendalarm", channel) for the legacy API, ("whistle", None) for the
+        # modern whistle API.
+        self._alarm_method: tuple[str, int | None] | None = None
 
-    def _sound_alarm(self, enable: int) -> int:
-        """Send the sendAlarm command, trying channels until one is accepted.
+    def _send_alarm(self, channel: int, enable: int) -> dict:
+        """Call the legacy sendAlarm endpoint on a channel; return payload."""
+        client = self.coordinator.ezviz_client
+        return client._request_json(  # noqa: SLF001
+            "PUT",
+            f"{API_ENDPOINT_DEVICES}{self._serial}/{channel}"
+            f"{API_ENDPOINT_SWITCH_SOUND_ALARM}",
+            data={"enable": enable},
+            retry_401=True,
+        )
 
-        Returns the channel that worked. Raises if none are accepted. Runs in
-        the executor.
+    def _alarm_on(self) -> None:
+        """Sound the siren, discovering the mechanism the device supports.
+
+        Runs in the executor. Tries the legacy active-defense sendAlarm across
+        channels (older cameras) and falls back to the modern whistle API
+        (newer cameras such as the dual-lens H8c). Caches what worked.
         """
         client = self.coordinator.ezviz_client
 
-        # Fall back to the library's public method if its internals change.
-        if not (hasattr(client, "_request_json") and hasattr(client, "_is_ok")):
-            client.sound_alarm(self._serial, enable)
-            return 0
-
-        # Try the previously-working channel first, then the rest.
-        channels: tuple[int, ...] = _ALARM_CHANNELS
-        if self._alarm_channel is not None:
-            channels = (
-                self._alarm_channel,
-                *(c for c in _ALARM_CHANNELS if c != self._alarm_channel),
+        # Fast path: reuse the previously-discovered mechanism.
+        if self._alarm_method == ("whistle", None):
+            client.set_device_whistle(
+                self._serial,
+                status=1,
+                duration=WHISTLE_DURATION,
+                volume=WHISTLE_VOLUME,
             )
+            return
 
-        last: object = None
-        for channel in channels:
-            try:
-                payload = client._request_json(  # noqa: SLF001
-                    "PUT",
-                    f"{API_ENDPOINT_DEVICES}{self._serial}/{channel}"
-                    f"{API_ENDPOINT_SWITCH_SOUND_ALARM}",
-                    data={"enable": enable},
-                    retry_401=True,
-                )
-            except (HTTPError, PyEzvizError) as err:
-                last = err
-                continue
-            if client._is_ok(payload):  # noqa: SLF001
-                return channel
-            last = payload
+        errors: list[str] = []
 
-        raise PyEzvizError(
-            f"Could not set the alarm sound on any channel (tried {channels}): {last}"
-        )
+        # 1) Legacy sendAlarm (older cameras), trying each channel.
+        if hasattr(client, "_request_json") and hasattr(client, "_is_ok"):
+            for channel in _ALARM_CHANNELS:
+                try:
+                    payload = self._send_alarm(channel, 2)
+                except (HTTPError, PyEzvizError) as err:
+                    errors.append(f"sendAlarm ch{channel}: {err}")
+                    continue
+                if client._is_ok(payload):  # noqa: SLF001
+                    self._alarm_method = ("sendalarm", channel)
+                    return
+                errors.append(f"sendAlarm ch{channel}: {payload.get('meta')}")
+
+        # 2) Modern whistle API (e.g. H8c dual-lens).
+        try:
+            client.set_device_whistle(
+                self._serial,
+                status=1,
+                duration=WHISTLE_DURATION,
+                volume=WHISTLE_VOLUME,
+            )
+        except (HTTPError, PyEzvizError) as err:
+            errors.append(f"whistle: {err}")
+        else:
+            self._alarm_method = ("whistle", None)
+            return
+
+        raise PyEzvizError("Could not sound the siren: " + "; ".join(errors))
+
+    def _alarm_off(self) -> None:
+        """Stop the siren using the discovered mechanism. Runs in executor."""
+        client = self.coordinator.ezviz_client
+        method = self._alarm_method
+
+        if method is not None and method[0] == "whistle":
+            client.stop_whistle(self._serial)
+            return
+
+        if method is not None and method[0] == "sendalarm":
+            payload = self._send_alarm(method[1] or 0, 1)
+            if not client._is_ok(payload):  # noqa: SLF001
+                raise PyEzvizError(f"Could not stop the siren: {payload.get('meta')}")
+            return
+
+        # Mechanism unknown (e.g. off pressed before on): best effort.
+        try:
+            client.stop_whistle(self._serial)
+        except (HTTPError, PyEzvizError):
+            client.sound_alarm(self._serial, 1)
 
     @override
     async def async_added_to_hass(self) -> None:
@@ -134,9 +178,7 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off camera siren."""
         try:
-            self._alarm_channel = await self.hass.async_add_executor_job(
-                self._sound_alarm, 1
-            )
+            await self.hass.async_add_executor_job(self._alarm_off)
 
         except (HTTPError, PyEzvizError) as err:
             raise HomeAssistantError(
@@ -154,9 +196,7 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on camera siren."""
         try:
-            self._alarm_channel = await self.hass.async_add_executor_job(
-                self._sound_alarm, 2
-            )
+            await self.hass.async_add_executor_job(self._alarm_on)
 
         except (HTTPError, PyEzvizError) as err:
             raise HomeAssistantError(
