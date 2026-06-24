@@ -5,6 +5,10 @@ from datetime import datetime, timedelta
 from typing import Any, override
 
 from pyezvizapi import HTTPError, PyEzvizError, SupportExt
+from pyezvizapi.api_endpoints import (
+    API_ENDPOINT_DEVICES,
+    API_ENDPOINT_SWITCH_SOUND_ALARM,
+)
 
 from homeassistant.components.siren import (
     SirenEntity,
@@ -23,6 +27,11 @@ from .entity import EzvizBaseEntity
 
 PARALLEL_UPDATES = 1
 OFF_DELAY = timedelta(seconds=60)  # Camera firmware has hard coded turn off.
+
+# Channels to try for the sendAlarm command. Single-lens cameras use the
+# device-level channel 0; dual-lens / multi-channel devices (e.g. the H8c)
+# reject channel 0 with code 2004 and need their 1-indexed channel instead.
+_ALARM_CHANNELS = (0, 1, 2)
 
 SIREN_ENTITY_TYPE = SirenEntityDescription(
     key="siren",
@@ -66,6 +75,50 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
         self.entity_description = description
         self._attr_is_on = False
         self._delay_listener: Callable | None = None
+        # Channel the device accepts for sendAlarm; discovered on first use.
+        self._alarm_channel: int | None = None
+
+    def _sound_alarm(self, enable: int) -> int:
+        """Send the sendAlarm command, trying channels until one is accepted.
+
+        Returns the channel that worked. Raises if none are accepted. Runs in
+        the executor.
+        """
+        client = self.coordinator.ezviz_client
+
+        # Fall back to the library's public method if its internals change.
+        if not (hasattr(client, "_request_json") and hasattr(client, "_is_ok")):
+            client.sound_alarm(self._serial, enable)
+            return 0
+
+        # Try the previously-working channel first, then the rest.
+        channels: tuple[int, ...] = _ALARM_CHANNELS
+        if self._alarm_channel is not None:
+            channels = (
+                self._alarm_channel,
+                *(c for c in _ALARM_CHANNELS if c != self._alarm_channel),
+            )
+
+        last: object = None
+        for channel in channels:
+            try:
+                payload = client._request_json(  # noqa: SLF001
+                    "PUT",
+                    f"{API_ENDPOINT_DEVICES}{self._serial}/{channel}"
+                    f"{API_ENDPOINT_SWITCH_SOUND_ALARM}",
+                    data={"enable": enable},
+                    retry_401=True,
+                )
+            except (HTTPError, PyEzvizError) as err:
+                last = err
+                continue
+            if client._is_ok(payload):  # noqa: SLF001
+                return channel
+            last = payload
+
+        raise PyEzvizError(
+            f"Could not set the alarm sound on any channel (tried {channels}): {last}"
+        )
 
     @override
     async def async_added_to_hass(self) -> None:
@@ -81,8 +134,8 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off camera siren."""
         try:
-            result = await self.hass.async_add_executor_job(
-                self.coordinator.ezviz_client.sound_alarm, self._serial, 1
+            self._alarm_channel = await self.hass.async_add_executor_job(
+                self._sound_alarm, 1
             )
 
         except (HTTPError, PyEzvizError) as err:
@@ -90,20 +143,19 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
                 f"Failed to turn siren off for camera {self._serial}: {err}"
             ) from err
 
-        if result:
-            if self._delay_listener is not None:
-                self._delay_listener()
-                self._delay_listener = None
+        if self._delay_listener is not None:
+            self._delay_listener()
+            self._delay_listener = None
 
-            self._attr_is_on = False
-            self.async_write_ha_state()
+        self._attr_is_on = False
+        self.async_write_ha_state()
 
     @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on camera siren."""
         try:
-            result = await self.hass.async_add_executor_job(
-                self.coordinator.ezviz_client.sound_alarm, self._serial, 2
+            self._alarm_channel = await self.hass.async_add_executor_job(
+                self._sound_alarm, 2
             )
 
         except (HTTPError, PyEzvizError) as err:
@@ -111,16 +163,15 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
                 f"Failed to turn siren on for camera {self._serial}: {err}"
             ) from err
 
-        if result:
-            if self._delay_listener is not None:
-                self._delay_listener()
-                self._delay_listener = None
+        if self._delay_listener is not None:
+            self._delay_listener()
+            self._delay_listener = None
 
-            self._attr_is_on = True
-            self._delay_listener = evt.async_call_later(
-                self.hass, OFF_DELAY, self.off_delay_listener
-            )
-            self.async_write_ha_state()
+        self._attr_is_on = True
+        self._delay_listener = evt.async_call_later(
+            self.hass, OFF_DELAY, self.off_delay_listener
+        )
+        self.async_write_ha_state()
 
     @callback
     def off_delay_listener(self, now: datetime) -> None:
