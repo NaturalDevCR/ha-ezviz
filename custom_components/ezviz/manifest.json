@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/NaturalDevCR/ha-ezviz/issues",
   "loggers": ["paho_mqtt", "pyezvizapi"],
   "requirements": ["pyezvizapi==1.0.5.0"],
-  "version": "1.1.2"
+  "version": "1.1.3"
 }
