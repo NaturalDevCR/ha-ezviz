@@ -87,7 +87,7 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
 
         except (HTTPError, PyEzvizError) as err:
             raise HomeAssistantError(
-                f"Failed to turn siren off for {self.name}"
+                f"Failed to turn siren off for camera {self._serial}: {err}"
             ) from err
 
         if result:
@@ -108,7 +108,7 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
 
         except (HTTPError, PyEzvizError) as err:
             raise HomeAssistantError(
-                f"Failed to turn siren on for {self.name}"
+                f"Failed to turn siren on for camera {self._serial}: {err}"
             ) from err
 
         if result:

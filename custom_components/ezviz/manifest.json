@@ -1,13 +1,22 @@
 {
   "domain": "ezviz",
   "name": "EZVIZ",
-  "codeowners": ["@NaturalDevCR"],
+  "codeowners": [
+    "@NaturalDevCR"
+  ],
   "config_flow": true,
-  "dependencies": ["ffmpeg"],
+  "dependencies": [
+    "ffmpeg"
+  ],
   "documentation": "https://github.com/NaturalDevCR/ha-ezviz",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/NaturalDevCR/ha-ezviz/issues",
-  "loggers": ["paho_mqtt", "pyezvizapi"],
-  "requirements": ["pyezvizapi==1.0.5.0"],
-  "version": "1.1.3"
+  "loggers": [
+    "paho_mqtt",
+    "pyezvizapi"
+  ],
+  "requirements": [
+    "pyezvizapi==1.0.5.0"
+  ],
+  "version": "1.1.4"
 }
