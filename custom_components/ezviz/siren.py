@@ -1,5 +1,7 @@
 """Support for EZVIZ sirens."""
 
+import logging
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any, override
@@ -19,11 +21,16 @@ from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import event as evt
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.entity_platform import (
+    AddConfigEntryEntitiesCallback,
+    async_get_current_platform,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .coordinator import EzvizConfigEntry, EzvizDataUpdateCoordinator
 from .entity import EzvizBaseEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
 OFF_DELAY = timedelta(seconds=60)  # Camera firmware has hard coded turn off.
@@ -48,6 +55,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up EZVIZ sensors based on a config entry."""
     coordinator = entry.runtime_data
+
+    platform = async_get_current_platform()
+    # Temporary diagnostic service to identify the correct siren mechanism on
+    # cameras where it doesn't sound. Call ezviz.siren_diagnostics on the siren
+    # entity, listen, and share the resulting log.
+    platform.async_register_entity_service(
+        "siren_diagnostics", None, "async_siren_diagnostics"
+    )
 
     async_add_entities(
         EzvizSirenEntity(coordinator, camera, SIREN_ENTITY_TYPE)
@@ -163,6 +178,58 @@ class EzvizSirenEntity(EzvizBaseEntity, SirenEntity, RestoreEntity):
             client.stop_whistle(self._serial)
         except (HTTPError, PyEzvizError):
             client.sound_alarm(self._serial, 1)
+
+    def _run_diagnostics(self) -> None:
+        """Probe siren mechanisms and log results (temporary diagnostic).
+
+        Reads the device's whistle status (channel structure) and then makes a
+        short 5 s sound test for the device-level whistle and each channel,
+        spaced 8 s apart so they can be told apart by ear.
+        """
+        client = self.coordinator.ezviz_client
+        serial = self._serial
+        lines = [f"=== EZVIZ siren diagnostics for {serial} ==="]
+
+        def safe(label: str, func: Callable[[], Any]) -> None:
+            try:
+                lines.append(f"{label} -> {func()}")
+            except Exception as err:  # noqa: BLE001
+                lines.append(f"{label} -> EXC {type(err).__name__}: {err}")
+
+        # Read-only: reveal channel structure and current whistle state.
+        safe(
+            "get_whistle_status_by_device",
+            lambda: client.get_whistle_status_by_device(serial),
+        )
+        safe(
+            "get_whistle_status_by_channel",
+            lambda: client.get_whistle_status_by_channel(serial),
+        )
+
+        # Sound tests (5 s each, library-blessed volume=50). LISTEN for which
+        # one actually sounds.
+        safe(
+            "set_device_whistle(status=1,dur=5,vol=50)",
+            lambda: client.set_device_whistle(
+                serial, status=1, duration=5, volume=50
+            ),
+        )
+        time.sleep(8)
+        for channel in (1, 2):
+            safe(
+                f"set_channel_whistle(channel={channel},status=1,dur=5,vol=50)",
+                lambda ch=channel: client.set_channel_whistle(
+                    serial,
+                    [{"channel": ch, "status": 1, "duration": 5, "volume": 50}],
+                ),
+            )
+            time.sleep(8)
+
+        _LOGGER.warning("%s", "\n".join(lines))
+
+    async def async_siren_diagnostics(self) -> None:
+        """Run the temporary siren diagnostics (entity service)."""
+        await self.hass.async_add_executor_job(self._run_diagnostics)
 
     @override
     async def async_added_to_hass(self) -> None:

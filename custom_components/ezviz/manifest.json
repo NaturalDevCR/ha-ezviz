@@ -18,5 +18,5 @@
   "requirements": [
     "pyezvizapi==1.0.5.0"
   ],
-  "version": "1.1.6"
+  "version": "1.1.7"
 }
