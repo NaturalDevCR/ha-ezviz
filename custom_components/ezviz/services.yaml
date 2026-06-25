@@ -29,11 +29,3 @@ wake_device:
     entity:
       integration: ezviz
       domain: camera
-
-# Temporary diagnostic to identify the working siren mechanism on cameras
-# where the siren does not sound. Logs results at warning level.
-siren_diagnostics:
-  target:
-    entity:
-      integration: ezviz
-      domain: siren
