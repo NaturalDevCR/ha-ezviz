@@ -59,6 +59,49 @@ If your camera's **last motion image** fails to decrypt, set its **verification 
 
 Leave it empty if your verification code is the same as the RTSP password — decryption falls back to the password automatically.
 
+### Using the last motion image in notifications
+
+The integration exposes each camera's last motion image as an `image` entity
+(`image.<camera_serial>_last_motion_image`). Its URL is stable and
+token-authenticated, so you can embed it in mobile notifications:
+
+```yaml
+data:
+  image: /api/image_proxy/image.<camera_serial>_last_motion_image?token=<token>
+```
+
+Because the long-lived `token=` query string is effectively a public URL for
+your camera, prefer the **snapshot** approach when sharing the image outside
+your LAN — it keeps the token off the wire:
+
+```yaml
+action: camera.snapshot
+data:
+  entity_id: image.<camera_serial>_last_motion_image
+  filename: www/snapshots/back_camera_last.jpg
+```
+
+Then reference the local file in your notification:
+
+```yaml
+action: notify.notify
+data:
+  title: Motion detected
+  message: Check your camera
+  data:
+    image: /local/snapshots/back_camera_last.jpg
+    push:
+      sound:
+        name: default
+        critical: 1
+        volume: 1
+```
+
+If the `image` entity itself renders a broken image even with the verification
+code set, double-check that the code on the device label matches what you
+entered — EZVIZ prints two separate codes on many cameras (verification code
+**and** RTSP password), and they are not interchangeable.
+
 ### Dual-lens cameras
 
 No extra configuration is required. As long as the device reports multiple channels and your RTSP credentials are set, the additional lens entities are created automatically. The second lens uses the same IP, port, and credentials as the first — only the RTSP channel differs.
