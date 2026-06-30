@@ -31,6 +31,7 @@ from .const import (
     ATTR_BODY_FORMAT,
     ATTR_CHANNEL,
     ATTR_DATA,
+    ATTR_HEADERS,
     ATTR_LOG_RESPONSE,
     ATTR_METHOD,
     ATTR_PARAMS,
@@ -78,6 +79,7 @@ DEBUG_AUTHENTICATED_REQUEST_SCHEMA = {
     ),
     vol.Optional(ATTR_CHANNEL, default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
     vol.Optional(ATTR_PARAMS, default=dict): dict,
+    vol.Optional(ATTR_HEADERS, default=dict): dict,
     vol.Optional(ATTR_DATA, default=dict): dict,
     vol.Optional(ATTR_BODY_FORMAT, default="form"): vol.In(_BODY_FORMATS),
     vol.Optional(ATTR_LOG_RESPONSE, default=True): cv.boolean,
@@ -425,6 +427,7 @@ class EzvizCamera(EzvizEntity, Camera):
         path: str,
         channel: int,
         params: dict[str, Any],
+        headers: dict[str, Any],
         data: dict[str, Any],
         body_format: str,
         log_response: bool,
@@ -438,6 +441,7 @@ class EzvizCamera(EzvizEntity, Camera):
                 path,
                 channel,
                 params,
+                headers,
                 data,
                 body_format,
                 redact_response,
@@ -458,6 +462,7 @@ class EzvizCamera(EzvizEntity, Camera):
         path: str,
         channel: int,
         params: dict[str, Any],
+        headers: dict[str, Any],
         data: dict[str, Any],
         body_format: str,
         redact_response: bool,
@@ -478,6 +483,9 @@ class EzvizCamera(EzvizEntity, Camera):
             rendered_params = _render_template_value(
                 params, serial=self._serial, channel=channel
             )
+            rendered_headers = _render_template_value(
+                headers, serial=self._serial, channel=channel
+            )
             rendered_data = _render_template_value(
                 data, serial=self._serial, channel=channel
             )
@@ -492,6 +500,8 @@ class EzvizCamera(EzvizEntity, Camera):
             "params": rendered_params or None,
             "timeout": getattr(client, "_timeout", 25),
         }
+        if rendered_headers:
+            request_kwargs["headers"] = rendered_headers
 
         if body_format == "json":
             request_kwargs["json"] = rendered_data or None
@@ -500,11 +510,8 @@ class EzvizCamera(EzvizEntity, Camera):
 
         try:
             response = session.request(method, **request_kwargs)
-            response.raise_for_status()
-        except requests.HTTPError as err:
             if (
-                err.response is not None
-                and err.response.status_code == 401
+                response.status_code == 401
                 and max_retries > 0
             ):
                 client.login()
@@ -513,12 +520,12 @@ class EzvizCamera(EzvizEntity, Camera):
                     path,
                     channel,
                     params,
+                    headers,
                     data,
                     body_format,
                     redact_response,
                     max_retries - 1,
                 )
-            raise HTTPError from err
         except requests.RequestException as err:
             raise PyEzvizError(f"Could not perform EZVIZ debug request: {err}") from err
 
@@ -534,6 +541,7 @@ class EzvizCamera(EzvizEntity, Camera):
             "ok": response.ok,
             "request": {
                 "params": rendered_params,
+                "headers": rendered_headers,
                 "data": rendered_data,
                 "body_format": body_format,
             },

@@ -245,6 +245,10 @@
           "description": "Form or JSON body. String values may use {serial} and {channel}.",
           "name": "Data"
         },
+        "headers": {
+          "description": "Additional request headers. String values may use {serial} and {channel}.",
+          "name": "Headers"
+        },
         "log_response": {
           "description": "Writes the redacted request result to the Home Assistant log.",
           "name": "Log response"

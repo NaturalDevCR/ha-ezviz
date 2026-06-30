@@ -67,6 +67,13 @@ debug_authenticated_request:
       default: {}
       selector:
         object:
+    headers:
+      required: false
+      example:
+        deviceSerial: "{serial}"
+      default: {}
+      selector:
+        object:
     data:
       required: false
       example:
