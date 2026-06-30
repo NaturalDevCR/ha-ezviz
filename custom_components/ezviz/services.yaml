@@ -29,3 +29,69 @@ wake_device:
     entity:
       integration: ezviz
       domain: camera
+
+debug_authenticated_request:
+  target:
+    entity:
+      integration: ezviz
+      domain: camera
+  fields:
+    path:
+      required: true
+      example: "/v3/devices/{serial}/{channel}/sendAlarm"
+      selector:
+        text:
+    method:
+      required: false
+      example: "PUT"
+      default: "PUT"
+      selector:
+        select:
+          options:
+            - "GET"
+            - "POST"
+            - "PUT"
+            - "DELETE"
+    channel:
+      required: false
+      example: 1
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    params:
+      required: false
+      example: {}
+      default: {}
+      selector:
+        object:
+    data:
+      required: false
+      example:
+        enable: 2
+      default: {}
+      selector:
+        object:
+    body_format:
+      required: false
+      example: "form"
+      default: "form"
+      selector:
+        select:
+          options:
+            - "form"
+            - "json"
+    log_response:
+      required: false
+      example: true
+      default: true
+      selector:
+        boolean:
+    redact_response:
+      required: false
+      example: true
+      default: true
+      selector:
+        boolean:

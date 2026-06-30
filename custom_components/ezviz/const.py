@@ -25,10 +25,19 @@ ATTR_DIRECTION = "direction"
 ATTR_SPEED = "speed"
 ATTR_LEVEL = "level"
 ATTR_TYPE = "type_value"
+ATTR_METHOD = "method"
+ATTR_PATH = "path"
+ATTR_DATA = "data"
+ATTR_PARAMS = "params"
+ATTR_CHANNEL = "channel"
+ATTR_BODY_FORMAT = "body_format"
+ATTR_LOG_RESPONSE = "log_response"
+ATTR_REDACT_RESPONSE = "redact_response"
 
 # Service names
 SERVICE_WAKE_DEVICE = "wake_device"
 SERVICE_DETECTION_SENSITIVITY = "set_alarm_detection_sensibility"
+SERVICE_DEBUG_AUTHENTICATED_REQUEST = "debug_authenticated_request"
 
 # Defaults
 EU_URL = "apiieu.ezvizlife.com"

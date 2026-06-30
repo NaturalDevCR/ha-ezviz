@@ -229,6 +229,44 @@
     "wake_device": {
       "description": "Wakes a camera from sleep mode. Especially useful for battery cameras.",
       "name": "Wake camera"
+    },
+    "debug_authenticated_request": {
+      "description": "Sends a relative EZVIZ cloud API request with the camera account's authenticated session. Intended for endpoint discovery.",
+      "fields": {
+        "body_format": {
+          "description": "How to send the request body.",
+          "name": "Body format"
+        },
+        "channel": {
+          "description": "Channel value available as {channel} in the path, params, and data.",
+          "name": "Channel"
+        },
+        "data": {
+          "description": "Form or JSON body. String values may use {serial} and {channel}.",
+          "name": "Data"
+        },
+        "log_response": {
+          "description": "Writes the redacted request result to the Home Assistant log.",
+          "name": "Log response"
+        },
+        "method": {
+          "description": "HTTP method to use.",
+          "name": "Method"
+        },
+        "params": {
+          "description": "Query string parameters. String values may use {serial} and {channel}.",
+          "name": "Params"
+        },
+        "path": {
+          "description": "Relative EZVIZ API path. Use {serial} and {channel} placeholders as needed.",
+          "name": "Path"
+        },
+        "redact_response": {
+          "description": "Redacts known tokens and passwords from the logged and returned result.",
+          "name": "Redact response"
+        }
+      },
+      "name": "Debug authenticated request"
     }
   }
 }

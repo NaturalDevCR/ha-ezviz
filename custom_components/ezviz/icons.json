@@ -48,6 +48,9 @@
     },
     "wake_device": {
       "service": "mdi:sleep-off"
+    },
+    "debug_authenticated_request": {
+      "service": "mdi:api"
     }
   }
 }

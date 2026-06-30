@@ -26,6 +26,7 @@ The official integration had several issues this fork addresses, plus a couple o
 
 - **Dual-lens / multi-channel cameras** — devices that report more than one video channel (e.g. dual-lens cameras) now expose **one camera entity per channel** under the same device. The primary lens keeps its original entity (and entity ID); additional lenses appear as `Channel 2`, `Channel 3`, … Channel RTSP paths are derived from your configured stream path (`/Streaming/Channels/102` → `/Streaming/Channels/202`), preserving your main/sub-stream choice.
 - **Reconfigure flow** — you can update a camera's RTSP username/password and add or change its verification code from the entry's **⋮ → Reconfigure** menu, without deleting and re-adding the camera.
+- **EZVIZ API endpoint discovery** — a diagnostic service can send relative EZVIZ cloud API requests with the already-authenticated account session, useful for testing model-specific endpoints such as newer active-defense siren variants.
 - **Up-to-date library** — bumped [`pyezvizapi`](https://github.com/RenierM26/pyEzvizApi) to `1.0.5.0`, which brings improved multi-channel / DVR support.
 
 ---
@@ -105,6 +106,35 @@ entered — EZVIZ prints two separate codes on many cameras (verification code
 ### Dual-lens cameras
 
 No extra configuration is required. As long as the device reports multiple channels and your RTSP credentials are set, the additional lens entities are created automatically. The second lens uses the same IP, port, and credentials as the first — only the RTSP channel differs.
+
+### EZVIZ API endpoint discovery
+
+For models where a feature is present in the EZVIZ app but missing or broken in
+Home Assistant, the `ezviz.debug_authenticated_request` service can send a
+relative EZVIZ cloud API request through the already-authenticated account
+session. The service is registered on camera entities and supports `{serial}`
+and `{channel}` placeholders in the path, params, and data fields.
+
+Example to test whether a newer camera sounds the active-defense siren on
+channel `1` instead of the legacy channel `0`:
+
+```yaml
+service: ezviz.debug_authenticated_request
+target:
+  entity_id: camera.your_camera
+data:
+  method: PUT
+  path: /v3/devices/{serial}/{channel}/sendAlarm
+  channel: 1
+  data:
+    enable: 2
+```
+
+To stop the siren, call the same endpoint with `enable: 1`.
+
+The result is returned in Home Assistant versions that support service
+responses, and is also written to the Home Assistant log with known tokens and
+passwords redacted by default.
 
 ---
 
